@@ -53,20 +53,21 @@ def generate_forecast(series):
 @api_view(['GET', 'POST'])
 def forecast(request):
     # read data, convert to pd.Series, and add date index
-    series = []
+    series = []; data = {}
     if request.method == 'GET':
         recent_case = Case.objects.all().first()
         csv_file_path = recent_case.csv_file.url
         series = pd.read_csv(csv_file_path[1:])
         series = series.iloc[:, 0]
         series.index = pd.date_range(start=recent_case.start_date, periods=len(series), freq='M')
+        data = generate_forecast(series)
 
     elif request.method == 'POST':
         series = pd.Series(request.data['cases'])
         start_date = datetime.datetime.strptime("{}-{}-{}".format(request.data['startDate'][0], request.data['startDate'][1], request.data['startDate'][2]), '%Y-%m-%d').date()
         series.index = pd.date_range(start=start_date , periods=len(request.data['cases']), freq='M')
-
-    data = generate_forecast(series)
+        data = generate_forecast(series)
+        
     return Response(data)
 
 @api_view(['POST'])
