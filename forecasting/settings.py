@@ -30,7 +30,7 @@ SECRET_KEY = env.str("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [".herokuapp.com", "django-env.eba-zkzj7qpm.us-west-2.elasticbeanstalk.com", "localhost", "127.0.0.1"]
+ALLOWED_HOSTS = [".herokuapp.com", "thesis.eba-zkzj7qpm.us-west-2.elasticbeanstalk.com", "localhost", "127.0.0.1"]
 
 CSRF_TRUSTED_ORIGINS = ['https://8000-abcdarl-hivforecastingd-4p274ahpjtp.ws-us67.gitpod.io']
 
