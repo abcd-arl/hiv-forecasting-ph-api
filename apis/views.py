@@ -6,6 +6,7 @@ from django.core.files import File
 
 import datetime
 import pandas as pd
+import s3fs
 from statsmodels.tsa.arima.model import ARIMA
 
 from .models import Case
@@ -57,7 +58,7 @@ def forecast(request):
     if request.method == 'GET':
         recent_case = Case.objects.all().first()
         csv_file_path = recent_case.csv_file.url
-        series = pd.read_csv(csv_file_path[1:])
+        series = pd.read_csv(csv_file_path)
         series = series.iloc[:, 0]
         series.index = pd.date_range(start=recent_case.start_date, periods=len(series), freq='M')
 
