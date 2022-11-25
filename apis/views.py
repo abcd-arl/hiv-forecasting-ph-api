@@ -11,23 +11,35 @@ from io import StringIO
 import datetime
 import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
 
 from .models import Case
 
 
 def generate_forecast(series):
+    series_raw = series.copy()
+    series_raw = series_raw.fillna('NaN')
+
+    series_processed = series.copy()
+    series_processed = series_processed.ffill()
+
     # generate training and testing data
-    seventy_percent = int(((len(series)) / 10) * 7.5)
-    train = series[:seventy_percent]
-    test = series[seventy_percent:]
+    seventy_percent = int(((len(series_processed)) / 10) * 7.5)
+    train = series_processed[:seventy_percent]
+    test = series_processed[seventy_percent:]
 
     # fit model
     initial_model = ARIMA(train, order=(1,1,1), freq="M").fit()
-    final_model = ARIMA(series, order=(1,1,1), freq="M").fit()
+    final_model = ARIMA(series_processed, order=(1,1,1), freq="M").fit()
 
-    # get validation and residuals
+    # get validation, residuals
     validation = pd.Series(initial_model.forecast(len(test)))
     residuals = test - validation
+    
+    # get performance measeures
+    mae = mean_absolute_error(validation, test)
+    mse = mean_squared_error(validation, test)
+    mape = mean_absolute_percentage_error(validation, test)
 
     # forecast
     forecast = pd.Series(final_model.forecast(12), name='Forecast')
@@ -35,8 +47,13 @@ def generate_forecast(series):
     return {
         "actual": {
             "name": "Actual",
-            "startDate": [series.index[0].year, series.index[0].month, series.index[0].day],
-            "cases": series.tolist(),
+            "startDate": [series_raw.index[0].year, series_raw.index[0].month, series_raw.index[0].day],
+            "cases": series_raw.tolist(),
+        },
+        "processed": {
+            "name": "Actual",
+            "startDate": [series_processed.index[0].year, series_processed.index[0].month, series_processed.index[0].day],
+            "cases": series_processed.tolist(),
         },
         "validation" : {
             "name": "Validation",
@@ -52,6 +69,11 @@ def generate_forecast(series):
             "name": "Forecast",
             "startDate": [forecast.index[0].year, forecast.index[0].month],
             "cases": forecast.tolist()
+        },
+        "performanceMeasures": {
+            "mae": round(mae, 2),
+            "mse": round(mse, 2),
+            "mape": round(mape * 100, 2) 
         }
     }
 
@@ -67,7 +89,7 @@ def forecast(request):
         series.index = pd.date_range(start=recent_case.start_date, periods=len(series), freq='M')
 
     elif request.method == 'POST':
-        series = pd.Series(request.data['cases'])
+        series = pd.Series([int(value) if value else None for value in request.data['cases']], name='Cases')
         start_date = datetime.datetime.strptime("{}-{}-{}".format(request.data['startDate'][0], request.data['startDate'][1], request.data['startDate'][2]), '%Y-%m-%d').date()
         series.index = pd.date_range(start=start_date , periods=len(request.data['cases']), freq='M')
 
@@ -78,7 +100,7 @@ def forecast(request):
 @permission_classes((IsAuthenticated, ))
 def update_table(request):
     try:
-        series = pd.Series([int(value) for value in request.data['cases']], name='Cases')
+        series = pd.Series([int(value) if value else None for value in request.data['cases']], name='Cases')
         start_date = datetime.datetime.strptime(request.data['startDate'], '%Y-%m-%d').date()
 
         bucket = "hiv-forecasting-ph-bucket"
@@ -90,7 +112,6 @@ def update_table(request):
         s3_resource.Bucket(bucket).download_file('series.csv', 'static/series.csv')
         f = open('static/series.csv', "rb")
         myfile = File(f)
-        print('HERE', myfile)
 
     except ValueError:
         return Response(status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
@@ -101,7 +122,6 @@ def update_table(request):
 
     # the same from GET method in forecast view
     recent_case = Case.objects.all().first()
-    print('here', recent_case)
     csv_file_path = recent_case.csv_file.url
     series = pd.read_csv(csv_file_path)
     series = series.iloc[:, 0]
