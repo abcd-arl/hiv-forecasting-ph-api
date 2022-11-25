@@ -4,12 +4,16 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from django.core.files import File
 
+import s3fs
+import boto3
+from io import StringIO 
+
 import datetime
 import pandas as pd
-import s3fs
 from statsmodels.tsa.arima.model import ARIMA
 
 from .models import Case
+
 
 def generate_forecast(series):
     # generate training and testing data
@@ -76,22 +80,30 @@ def update_table(request):
     try:
         series = pd.Series([int(value) for value in request.data['cases']], name='Cases')
         start_date = datetime.datetime.strptime(request.data['startDate'], '%Y-%m-%d').date()
-        
-        series.to_csv("/new.csv", index=False)
-        f = open('/new.csv')
+
+        bucket = "hiv-forecasting-ph-bucket"
+        csv_buffer = StringIO()
+        series.to_csv(csv_buffer, index=False)
+
+        s3_resource = boto3.resource('s3')
+        s3_resource.Object(bucket, 'series.csv').put(Body=csv_buffer.getvalue())
+        s3_resource.Bucket(bucket).download_file('series.csv', 'static/series.csv')
+        f = open('static/series.csv', "rb")
         myfile = File(f)
+        print('HERE', myfile)
 
     except ValueError:
         return Response(status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
     new_record = Case(start_date=start_date)
-    new_record.csv_file.save("new.csv", myfile)
+    new_record.csv_file.save("series.csv", myfile)
     new_record.save()
 
     # the same from GET method in forecast view
     recent_case = Case.objects.all().first()
+    print('here', recent_case)
     csv_file_path = recent_case.csv_file.url
-    series = pd.read_csv(csv_file_path[1:])
+    series = pd.read_csv(csv_file_path)
     series = series.iloc[:, 0]
     series.index = pd.date_range(start=recent_case.start_date, periods=len(series), freq='M')
 
