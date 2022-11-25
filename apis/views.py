@@ -77,8 +77,8 @@ def update_table(request):
         series = pd.Series([int(value) for value in request.data['cases']], name='Cases')
         start_date = datetime.datetime.strptime(request.data['startDate'], '%Y-%m-%d').date()
         
-        series.to_csv("csv-files/new.csv", index=False)
-        f = open('csv-files/new.csv')
+        series.to_csv("/new.csv", index=False)
+        f = open('/new.csv')
         myfile = File(f)
 
     except ValueError:
