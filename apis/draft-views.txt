@@ -48,18 +48,18 @@ def generate_forecast(series):
     forecast = pd.Series(final_model.forecast(12), name='Forecast')
 
     return {
-        "raw": {
-            "name": "Raw",
+        "actual": {
+            "name": "Actual",
             "startDate": [series_raw.index[0].year, series_raw.index[0].month, series_raw.index[0].day],
             "cases": series_raw.tolist(),
         },
-        "actual": {
+        "predict": {
+            "cases": final_model.predict()
+        },
+        "processed": {
             "name": "Actual",
             "startDate": [series_processed.index[0].year, series_processed.index[0].month, series_processed.index[0].day],
             "cases": series_processed.tolist(),
-        },
-        "predict": {
-            "cases": final_model.predict()
         },
         "validation" : {
             "name": "Validation",
@@ -100,32 +100,31 @@ def forecast(request):
         series.index = pd.date_range(start=start_date , periods=len(request.data['cases']), freq='M')
 
     data = generate_forecast(series)
-    return Response({"raw": data["raw"], "actual": data["actual"], "forecast": data["forecast"]})
+    return Response(data)
 
-@api_view(['GET', 'POST'])
+@api_view(['POST'])
 @permission_classes((IsAuthenticated, ))
 def update_table(request):
-    if request.method == 'POST':
-        try:
-            series = pd.Series([int(value) if value else None for value in request.data['cases']], name='Cases')
-            start_date = datetime.datetime.strptime(request.data['startDate'], '%Y-%m-%d').date()
+    try:
+        series = pd.Series([int(value) if value else None for value in request.data['cases']], name='Cases')
+        start_date = datetime.datetime.strptime(request.data['startDate'], '%Y-%m-%d').date()
 
-            bucket = "hiv-forecasting-ph-bucket"
-            csv_buffer = StringIO()
-            series.to_csv(csv_buffer, index=False)
+        bucket = "hiv-forecasting-ph-bucket"
+        csv_buffer = StringIO()
+        series.to_csv(csv_buffer, index=False)
 
-            s3_resource = boto3.resource('s3')
-            s3_resource.Object(bucket, 'series.csv').put(Body=csv_buffer.getvalue())
-            s3_resource.Bucket(bucket).download_file('series.csv', 'static/series.csv')
-            f = open('static/series.csv', "rb")
-            myfile = File(f)
+        s3_resource = boto3.resource('s3')
+        s3_resource.Object(bucket, 'series.csv').put(Body=csv_buffer.getvalue())
+        s3_resource.Bucket(bucket).download_file('series.csv', 'static/series.csv')
+        f = open('static/series.csv', "rb")
+        myfile = File(f)
 
-        except ValueError:
-            return Response(status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+    except ValueError:
+        return Response(status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
-        new_record = Case(start_date=start_date)
-        new_record.csv_file.save("series.csv", myfile)
-        new_record.save()
+    new_record = Case(start_date=start_date)
+    new_record.csv_file.save("series.csv", myfile)
+    new_record.save()
 
     # the same from GET method in forecast view
     recent_case = Case.objects.all().first()
@@ -135,10 +134,4 @@ def update_table(request):
     series.index = pd.date_range(start=recent_case.start_date, periods=len(series), freq='M')
 
     data = generate_forecast(series)
-    return Response({   "raw": data["raw"], 
-                        "actual": data["actual"], 
-                        "validation": data["validation"],
-                        "forecast": data["forecast"],
-                        "residuals": data["residuals"], 
-                        "performanceMeasures": data["performanceMeasures"]
-                    })
+    return Response(data)
